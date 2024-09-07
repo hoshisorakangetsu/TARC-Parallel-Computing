@@ -46,13 +46,12 @@ namespace PSO {
 	{
 	private:
 		FitnessFunc fit;
-		double bestTotalDistance = DBL_MAX;
+		double totalDistance = DBL_MAX;
 		Route foundedRoute, offsetRoute;
 	public:
 		Particle() {};
 		Particle(Route nodes, FitnessFunc fitness) : fit(fitness)
 		{
-			srand(0);
 			for (int i = nodes.size(); i > 0; i--)
 			{
 				int j = Utils::randRange(0, nodes.size() - 1);
@@ -60,7 +59,7 @@ namespace PSO {
 				offsetRoute.push_back(nodes[j]);
 				nodes.erase(nodes.begin() + j); // j starts from 0, so if it's 0, it still removes first element
 			}
-			bestTotalDistance = getTotalDistance();
+			totalDistance = getTotalDistance();
 		};
 		// swap founded route to best route (get the swap sequence needed to go from founded route to best route)
 		// performs the swap inline, so no returns
@@ -91,8 +90,15 @@ namespace PSO {
 			SwapSequence selectedSwapOperators(ss.begin(), ss.begin() + chosenLength);
 			swap(foundedRoute, selectedSwapOperators);
 		};
-		double getBestTotalDistance() { return bestTotalDistance; }
-		Route getFoundedRoute() { return foundedRoute; }
+		void minusOffset(SwapSequence& ss)
+		{
+			//Vid to change offsetRoute
+			swap(offsetRoute, ss);
+			//alpha*(Pid-Xid), move toward personal best aka offset
+			minus(offsetRoute);
+		}
+		double getBestTotalDistance() { return totalDistance; }
+		const Route& getFoundedRoute() { return foundedRoute; }
 		double getTotalDistance()
 		{
 			double totalDist = 0;
@@ -106,6 +112,8 @@ namespace PSO {
 			// sum last and first (make it a loop)
 			totalDist += fit(foundedRoute[foundedRoute.size() - 1], foundedRoute[0]);
 
+			totalDistance = totalDist;
+
 			return totalDist;
 		};
 	private:
@@ -113,7 +121,7 @@ namespace PSO {
 		{
 			Node temp = nodes[source];
 			nodes[source] = nodes[target];
-			nodes[target] = nodes[source];
+			nodes[target] = temp;
 		};
 		void swap(Route& nodes, SwapSequence& ss)
 		{
@@ -138,9 +146,18 @@ namespace PSO {
 	};
 
 	// randomly generates swap operator
-	SwapOperator swapOperator(Route &nodes)
+	SwapOperator swapOperator(Route& nodes)
 	{
+		int source = -1;
+		int target = -1;
 
+		do
+		{
+			source = nodes[Utils::randRange(0, nodes.size() - 1)].id;
+			target = nodes[Utils::randRange(0, nodes.size() - 1)].id;
+		} while (source == target);
+
+		return SwapOperator(source, target);
 	};
 
 	class PSOSolution
@@ -155,9 +172,10 @@ namespace PSO {
 		std::vector<Particle> particles;
 		PSOSolution solution;
 
+		// to introduce randomness, velocity = new swap sequence = swap sequence + globalRandomSwapSequence[0:random]
 		SwapSequence globalRandomSwapSequence;
 		for (int i = 0; i < nodes.size(); i++)
-			swapOperator(nodes);
+			globalRandomSwapSequence.push_back(swapOperator(nodes));
 
 		// init particles
 		for (int i = 0; i < numOfParticle; i++)
@@ -178,6 +196,28 @@ namespace PSO {
 			{
 				p.minus(solution.globalBestRoute);
 
+				SwapSequence velocity;
+				// from which element to take from the global random swap sequence
+				int lenToTake = Utils::randRange(0, globalRandomSwapSequence.size() - 1);
+				// take until which element
+				int takeHowMuch = Utils::randRange(1, globalRandomSwapSequence.size() - lenToTake);
+				for (int i = lenToTake; i < lenToTake + takeHowMuch; i++)
+				{
+					velocity.push_back(globalRandomSwapSequence[i]);
+				}
+
+				p.minusOffset(velocity);
+
+				double totalDistance = p.getTotalDistance();
+				//update for global purpose
+				if (totalDistance < solution.globalBestDistance)
+				{
+					solution.globalBestDistance = totalDistance;
+					solution.globalBestRoute.clear();
+					Route foundedRoute = p.getFoundedRoute();
+					for (int j = 0; j < foundedRoute.size(); j++)
+						solution.globalBestRoute.push_back(foundedRoute[j]);
+				}
 			}
 		}
 

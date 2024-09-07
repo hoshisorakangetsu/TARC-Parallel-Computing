@@ -63,13 +63,14 @@ int main()
 		return dij;
 	};
 
-	PSO::PSOSolution finalSolution = PSO::Solve(100, 20000, nodes, fitness);
+	PSO::PSOSolution finalSolution = PSO::Solve(100, 10000, nodes, fitness);
 
 #ifdef DEBUG
 	for (PSO::Node n : finalSolution.globalBestRoute)
 	{
 		std::cout << n.toString() << std::endl;
 	}
+	std::cout << "Best distance: " << finalSolution.globalBestDistance << std::endl;
 #endif
 
 	return 0;
