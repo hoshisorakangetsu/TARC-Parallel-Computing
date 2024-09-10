@@ -10,6 +10,8 @@
 
 int main()
 {
+	srand(time(0));
+
 	const std::string INPUT_FILE = "burma.csv";
 
 	// read from csv and parse into nodes
@@ -63,14 +65,20 @@ int main()
 		return dij;
 	};
 
-	PSO::PSOSolution finalSolution = PSO::Solve(100, 10000, nodes, fitness);
+	Utils::Timer timer;
+
+	timer.start();
+	PSO::PSOSolution finalSolution = PSO::Solve(100, 1000, nodes, fitness);
+	timer.stop();
 
 #ifdef DEBUG
+	std::cout << "Best route:" << std::endl;
 	for (PSO::Node n : finalSolution.globalBestRoute)
 	{
 		std::cout << n.toString() << std::endl;
 	}
 	std::cout << "Best distance: " << finalSolution.globalBestDistance << std::endl;
+	std::cout << "Time elapsed (ms): " << timer.elapsedMilliseconds() << std::endl;
 #endif
 
 	return 0;
