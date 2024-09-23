@@ -68,7 +68,7 @@ int main()
 	Utils::Timer timer;
 
 	timer.start();
-	PSO::PSOSolution finalSolution = PSO::Solve(100, 1000, nodes, fitness);
+	PSO::PSOSolution finalSolution = PSO::Solve(100, 1000, nodes, fitness, 4);
 	timer.stop();
 
 #ifdef DEBUG

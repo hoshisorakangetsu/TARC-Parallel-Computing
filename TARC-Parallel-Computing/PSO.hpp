@@ -3,6 +3,7 @@
 #include <string>
 #include <functional>
 #include <float.h>
+#include <omp.h>
 #include "Utils.hpp"
 
 namespace PSO {
@@ -63,26 +64,22 @@ namespace PSO {
 		};
 		// swap founded route to best route (get the swap sequence needed to go from founded route to best route)
 		// performs the swap inline, so no returns
-		void minus(Route& bestRoutes)
+		void minus(Route bestRoutes)
 		{
 			SwapSequence ss;
 			// make copy of the current route
-			Route currentRoute;
-			for (Node n : foundedRoute)
-			{
-				currentRoute.push_back(n);
-			}
+			Route currentRoute = foundedRoute;
 
 			int index;
 
 			// make current route follow best route
 			for (int i = 0; i < foundedRoute.size(); i++)
 			{
-				if (currentRoute[i].id != bestRoutes[i].id)
+				if (currentRoute.at(i).id != bestRoutes.at(i).id)
 				{
-					index = findIndex(currentRoute, bestRoutes[i].id);
+					index = findIndex(currentRoute, bestRoutes.at(i).id);
 					swapIndex(currentRoute, i, index);
-					SwapOperator so(currentRoute[i].id, currentRoute[index].id);
+					SwapOperator so(currentRoute.at(i).id, currentRoute.at(index).id);
 					ss.push_back(so);
 				}
 			}
@@ -167,60 +164,77 @@ namespace PSO {
 		double globalBestDistance = DBL_MAX;
 	};
 
-	PSOSolution Solve(int numOfParticle, int maxItr, Route nodes, FitnessFunc fit)
+	PSOSolution Solve(int numOfParticle, int maxItr, Route nodes, FitnessFunc fit, int numThreads = 1)
 	{
 		std::vector<Particle> particles;
 		PSOSolution solution;
 
-		// to introduce randomness, velocity = new swap sequence = swap sequence + globalRandomSwapSequence[0:random]
+		// To introduce randomness, velocity = new swap sequence = swap sequence + globalRandomSwapSequence[0:random]
 		SwapSequence globalRandomSwapSequence;
 		for (int i = 0; i < nodes.size(); i++)
 			globalRandomSwapSequence.push_back(swapOperator(nodes));
 
-		// init particles
+		// Set the number of threads for OpenMP
+		omp_set_num_threads(std::min(omp_get_max_threads(), numThreads));
+
+		// Initialize particles in parallel
+		#pragma omp parallel for schedule(dynamic)
 		for (int i = 0; i < numOfParticle; i++)
 		{
 			auto temp = Particle(nodes, fit);
 
-			if (temp.getBestTotalDistance() < solution.globalBestDistance)
+			#pragma omp critical // Ensure that updating the global best solution is done sequentially
 			{
-				solution.globalBestDistance = temp.getBestTotalDistance();
-				solution.globalBestRoute = temp.getFoundedRoute();
+				if (temp.getBestTotalDistance() < solution.globalBestDistance)
+				{
+					solution.globalBestDistance = temp.getBestTotalDistance();
+					solution.globalBestRoute = temp.getFoundedRoute();
+				}
 			}
-			particles.push_back(temp);
+			#pragma omp critical
+			{
+				particles.push_back(temp);
+			}
 		}
 
+		// Main iteration loop, parallelizing the particle updates
 		for (int currItr = 0; currItr < maxItr; currItr++)
 		{
-			for (Particle p : particles)
+			#pragma omp parallel for schedule(dynamic)
+			for (int i = 0; i < particles.size(); i++)
 			{
+				Particle& p = particles[i];
+
 				p.minus(solution.globalBestRoute);
 
 				SwapSequence velocity;
-				// from which element to take from the global random swap sequence
+				// From which element to take from the global random swap sequence
 				int lenToTake = Utils::randRange(0, globalRandomSwapSequence.size() - 1);
-				// take until which element
+				// Take until which element
 				int takeHowMuch = Utils::randRange(1, globalRandomSwapSequence.size() - lenToTake);
-				for (int i = lenToTake; i < lenToTake + takeHowMuch; i++)
+				for (int j = lenToTake; j < lenToTake + takeHowMuch; j++)
 				{
-					velocity.push_back(globalRandomSwapSequence[i]);
+					velocity.push_back(globalRandomSwapSequence[j]);
 				}
 
 				p.minusOffset(velocity);
 
 				double totalDistance = p.getTotalDistance();
-				//update for global purpose
-				if (totalDistance < solution.globalBestDistance)
+
+				#pragma omp critical
 				{
-					solution.globalBestDistance = totalDistance;
-					solution.globalBestRoute.clear();
-					Route foundedRoute = p.getFoundedRoute();
-					for (int j = 0; j < foundedRoute.size(); j++)
-						solution.globalBestRoute.push_back(foundedRoute[j]);
+					if (totalDistance < solution.globalBestDistance)
+					{
+						solution.globalBestDistance = totalDistance;
+						solution.globalBestRoute = p.getFoundedRoute();
+					}
 				}
 			}
+
+
 		}
 
 		return solution;
+
 	};
 }
